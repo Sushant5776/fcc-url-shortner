@@ -1,12 +1,10 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
-const dns = require('dns')
-const shortId = require('shortid')
 const mongoose = require('mongoose')
 const bodyParser = require('body-parser')
 const { urlModel } = require('./model')
-const URL = require('url').URL
+const shortId = require('shortid')
 
 const app = express()
 
@@ -28,38 +26,28 @@ app.get('/', function (req, res) {
 })
 
 app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended: false }))
 // Your first API endpoint
 app.get('/api/hello', function (req, res) {
   res.json({ greeting: 'hello API' })
 })
 
-app.post('/api/shorturl', function (req, res) {
-  let hostname
-
-  try {
-    hostname = new URL(req.body.url).hostname
-  } catch (e) {
-    hostname = 'invalid url'
+app.post('/api/shorturl', async function (req, res) {
+  const httpRegex = /^(http|https)(:\/\/)/
+  const url = httpRegex.test(req.body.url)
+  if (url) {
+    const urlDoc = new urlModel({ original_url: req.body.url, short_url: shortId.generate() })
+    const { original_url, short_url } = await urlDoc.save()
+    res.json({ original_url, short_url })
+  } else {
+    res.json({ error: 'invalid url' })
   }
-
-  dns.lookup(hostname, async function (err) {
-    if (err) {
-      res.json({ error: hostname })
-    } else {
-      const posted_url = req.body.url
-      // console.log(`Adding new entry for url: ${posted_url}`)
-      const urlDoc = new urlModel({ original_url: posted_url })
-      const { original_url, short_url } = await urlDoc.save()
-      // console.log(`Added entry successfully for url: ${posted_url} with short_url: ${short_url}`)
-      res.json({ original_url, short_url })
-    }
-  })
 })
 
 app.get('/api/shorturl/:short_url', async function (req, res) {
-  const { original_url } = await urlModel.findOne({ short_url: req.params.short_url })
-  if (original_url) {
-    res.redirect(original_url)
+  const response = await urlModel.findOne({ short_url: req.params.short_url })
+  if (response) {
+    return res.redirect(response.original_url)
   } else {
     res.json({ error: 'invalid url' })
   }
